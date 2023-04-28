@@ -1,109 +1,119 @@
-import { Component } from 'react';
-import { GlobalStyles } from './GlobalStyles';
-import { StyledApp } from './App.styled';
-import { Searchbar } from './Searchbar/Searchbar';
-import { ImageGallery } from './ImageGallery/ImageGallery';
-import { fetchImages } from './API/fetch';
-import { ToastContainer, toast } from 'react-toastify';
-import 'react-toastify/dist/ReactToastify.css';
-import { Loader } from './Loader/Loader';
-import { Button } from './Button/Button';
+import Button from './Button/Button';
+import ImageGallery from './ImageGallery/ImageGallery';
+import Modal from './Modal/Modal';
+import Searchbar from './Searchbar/Searchbar';
+import fetchImages from './Services/API';
 
-const Status = {
-      IDLE: 'idle',
-      SUCCESS: 'success',
-};
-    
+import React, { Component } from 'react';
+import { animateScroll } from 'react-scroll';
+
 export class App extends Component {
-  state = {
-    page: 1,
-    query: '',
-    status: Status.IDLE,
-    images: [],
-    isLoading: false,
-    isMore: false,
-  };
+state = {
+searchQuery: '',
+images: [],
+page: 1,
+per_page: 12,
+isLoading: false,
+loadMore: false,
+error: null,
+showModal: false,
+largeImageURL: '',
+id: null,
+};
 
-handleSubmit = ({ query }, { resetForm }) => {
-    this.setState({ query, page: 1 });
-    resetForm();
-  };
+componentDidUpdate(_, prevState) {
+const {searchQuery, page} = this.state;
 
-  handleCilck = () => {
-    this.setState(prevState => ({
-      page: prevState.page + 1,
-    }));
-  };
+if (prevState.searchQuery !== searchQuery || prevState.page !== page) {
+this.getImages(searchQuery, page);
+}
+}
 
-  async componentDidUpdate(_, prevState) {
-    const { query, page } = this.state;
+getImages = async (query, page) => {
+this.setState({isLoading: true});
+if(!query) {
+return;
+}
 
-    if (prevState.query !== query || prevState.page !== page) {
-      this.setState({
-        isLoading: true,
-      });
+try {
+const {hits, totalHits} = await fetchImages (query, page);
+this.setState(prevState => ({
+images: [...prevState.images, ...hits],
+loadMore: prevState.page < Math.ceil(totalHits/prevState.per_page),
+error: null,
+}));
+}
 
-      try {
-        const data = await fetchImages(query, page);
-        if (data.hits.length === 0) {
-          this.setState({
-            status: Status.IDLE,
-          });
-          toast.error('No results were found for your request');
-          return;
-        }
-        this.setState({
-          isMore: data.hits.length === 12,
-        });
-        const images = data.hits.map(
-          ({ id, webformatURL, largeImageURL, tags }) => ({
-            id,
-            webformatURL,
-            largeImageURL,
-            tags,
-          })
-        );
-        if (prevState.query !== query) {
-          toast.success(`We found ${data.totalHits} images`);
-          this.setState({
-            status: Status.SUCCESS,
-            images: [...images],
-          });
-        } else {
-          this.setState({
-            images: [...prevState.images, ...images],
-          });
-        }
-        const totalPages = Math.ceil(data.totalHits / 12);
-        if (page === totalPages && page > 1) {
-          toast.info(`You reached end of results`);
-        }
-      } catch (error) {
-        toast.error('Sorry, something went wrong. Please, try again');
-        this.setState({
-          status: Status.IDLE,
-        });
-      } finally {
-        this.setState({
-          isLoading: false,
-        });
-      }
-    }
-  }
+catch (error) {
+this.setState({error: error.massage});
+}
+
+finally {
+this.setState({isLoading: false});
+}
+};
 
 
+formSubmit = searchQuery => {
+this.setState({
+searchQuery,
+images: [],
+page: 1,
+loadMore: false,
+});
+};
 
-  render() {
-    const { images, isLoading, isMore } = this.state;
-    return (
-      <StyledApp>
-        <Searchbar onSubmit={this.handleSubmit} />
-        <ImageGallery images={images} handleCilck={this.handleCilck} />
-        {isLoading && <Loader visible={isLoading} />}
-        {isMore && <Button onClick={this.handleCilck} />}
-        <ToastContainer autoClose={2000} />
-        <GlobalStyles />
-      </StyledApp>
-    );
-  }
+onLoadMore = () => {
+const {loadMore} = this.state;
+if (loadMore) {
+this.setState(prevState => ({page: prevState.page + 1}));
+this.scrollOnMoreButton();
+}
+};
+
+scrollOnMoreButton = () => {
+animateScroll.scrollToBottom({
+duration: 1000,
+delay: 10,
+smooth: 'linear',
+});
+};
+
+openModal = largeImageURL => {
+this.setState({
+showModal: true,
+largeImageURL: largeImageURL,
+});
+};
+
+closeModal = () => {
+this.setState({
+showModal: false,
+largeImageURL: '',
+});
+};
+
+render() {
+const {images, loadMore, showModal, largeImageURL} = this.state;
+return (
+<>
+<Searchbar onSubmit={this.formSubmit}/>
+
+{images.length > 0 && <ImageGallery images={images} openModal={this.openModal}/>}
+
+{loadMore && (
+<Button onLoadMore={this.onLoadMore} />
+)}
+
+{!loadMore && images.length > 0 && (
+<p>No more images to load.</p>
+)}
+
+{showModal && (
+<Modal largeImageURL={largeImageURL} onClose={this.closeModal} />
+)}
+</>
+);
+}
+
 }
